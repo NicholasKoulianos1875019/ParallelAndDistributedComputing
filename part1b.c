@@ -149,23 +149,17 @@ int main(int argc, char* argv[]) {
       for (loc_part = 0; loc_part < loc_n; loc_part++)
          Update_part(loc_part, masses, loc_forces, loc_pos, loc_vel, 
                n, loc_n, delta_t);
-
-    // Ring start
+      // Ring start
       int next = (my_rank + 1) % comm_sz;
       int previous = (my_rank - 1 + comm_sz) % comm_sz;
 
-      for (int transfer_i = 0; transfer_i < comm_sz - 1; transfer_i++) {
-         int next_block = (my_rank - transfer_i + comm_sz) % comm_sz;
-         int previous_block = (next_block - 1 + comm_sz) % comm_sz;
-
-         if (my_rank == 0) {
-            MPI_Send(pos + next_block * loc_n, loc_n, vect_mpi_t, next, 0, comm);
-            MPI_Recv((pos + previous_block * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
-         } else {
-            MPI_Recv((pos + previous_block * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
-            MPI_Send(pos + next_block * loc_n, loc_n, vect_mpi_t, next, 0, comm);
-      }
-      }
+      if (my_rank == 0) {
+        MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
+        MPI_Recv((pos + previous * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+      } else {
+      MPI_Recv((pos + previous * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+        MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
+    }
       // MPI_Allgather(MPI_IN_PLACE, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t, comm);
       // Ring end
 #     ifndef NO_OUTPUT
