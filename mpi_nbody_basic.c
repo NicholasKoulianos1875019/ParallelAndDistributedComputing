@@ -150,26 +150,15 @@ int main(int argc, char* argv[]) {
          Update_part(loc_part, masses, loc_forces, loc_pos, loc_vel, 
                n, loc_n, delta_t);
       // Ring start
-      next = (my_rank + 1) % comm_sz;
-      previous = (my_rank - 1 + comm_sz) % comm_sz;
-      if (my_rank == 0) {
-        std::cout << "Process 0 starting the ring. Sending to Process " << next << "\n";
-        
-        // Process 0 sends first to break the blocking dependency chain
-        MPI_Send(loc_pos[0], loc_n, vect_mpi_t, next, 0, MPI_COMM_WORLD);
-        
-        // Process 0 blocks until the final process closes the ring loop
-        MPI_Recv(loc_pos[0], loc_n, vect_mpi_t, previous, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        std::cout << "Process 0 received token back from Process " 
-                  << previous << ". Ring complete!\n";
-      } else {
-        // All other processes wait to receive the token from their left neighbor
-        MPI_Recv(loc_pos[0], loc_n, vect_mpi_t, previous, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        
-        std::cout << "Process " << my_rank << " received token from Process " << previous << "\n";
+      int next = (my_rank + 1) % comm_sz;
+      int previous = (my_rank - 1 + comm_sz) % comm_sz;
 
-        // Send the token to the right neighbor
-        MPI_Send(loc_pos[0], loc_n, vect_mpi_t, next, 0, MPI_COMM_WORLD);
+      if (my_rank == 0) {
+        MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
+        MPI_Recv((pos + previous * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+      } else {
+        MPI_Recv(loc_pos, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+        MPI_Send((pos + previous * loc_n), loc_n, vect_mpi_t, next, 0, comm);
     }
       // MPI_Allgather(MPI_IN_PLACE, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t, comm);
       // Ring end
