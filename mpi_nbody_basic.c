@@ -157,8 +157,8 @@ int main(int argc, char* argv[]) {
         MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
         MPI_Recv((pos + previous * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
       } else {
-        MPI_Recv(loc_pos, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
-        MPI_Send((pos + previous * loc_n), loc_n, vect_mpi_t, next, 0, comm);
+      MPI_Recv((pos + previous * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+        MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
     }
       // MPI_Allgather(MPI_IN_PLACE, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t, comm);
       // Ring end
