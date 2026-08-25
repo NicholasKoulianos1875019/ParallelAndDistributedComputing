@@ -156,13 +156,17 @@ int main(int argc, char* argv[]) {
 
       for (int transfer_i = 0; transfer_i < comm_sz - 1; transfer_i++) {
          int next_block = (my_rank - transfer_i + comm_sz) % comm_sz;
-         int previous_block = (next_block - 1 + comm_sz) % comm_sz;
+         int previous_block = (my_rank - transfer_i - 1 + comm_sz) % comm_sz;
 
          if (my_rank == 0) {
+            // printf("Core %d sending to core %d\n", my_rank, next);
             MPI_Send(pos + next_block * loc_n, loc_n, vect_mpi_t, next, 0, comm);
+            // printf("Core %d recieving from core %d\n", my_rank, previous);
             MPI_Recv((pos + previous_block * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
          } else {
+            // printf("Core %d recieving from core %d\n", my_rank, previous);
             MPI_Recv((pos + previous_block * loc_n), loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+            // printf("Core %d sending to core %d\n", my_rank, next);
             MPI_Send(pos + next_block * loc_n, loc_n, vect_mpi_t, next, 0, comm);
       }
       }
