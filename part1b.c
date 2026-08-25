@@ -111,11 +111,15 @@ int main(int argc, char* argv[]) {
    double t;                   /* Current Time               */
    double* masses;             /* All the masses             */
    vect_t* loc_pos;
-   vect_t* loc_masses;               /* Positions of my particles  */
+   double* loc_masses;               /* Positions of my particles  */
    vect_t* pos;                /* Positions of all particles */
    vect_t* loc_vel;            /* Velocities of my particles */
    vect_t* loc_forces;        /* Forces on my particles     */
-   vect_t* temp;       
+   vect_t* temp;
+   vect_t* temp_recv;
+
+   double* temp_masses;
+   double* temp_masses_recv;       
 
    char g_i;                   /*_G_en or _i_nput init conds */
    double start, finish;       /* For timings                */
@@ -129,10 +133,16 @@ int main(int argc, char* argv[]) {
    loc_n = n/comm_sz;  /* n should be evenly divisible by comm_sz */
    masses = malloc(n*sizeof(double));
    loc_masses = malloc(loc_n*sizeof(double));
-   temp = malloc(loc_n*sizeof(double));   
+   loc_pos = malloc(loc_n*sizeof(vect_t));
    pos = malloc(n*sizeof(vect_t));
    loc_forces = malloc(loc_n*sizeof(vect_t));
    loc_vel = malloc(loc_n*sizeof(vect_t));
+temp = malloc(loc_n * sizeof(vect_t));
+temp_recv = malloc(loc_n * sizeof(vect_t));
+temp_masses = malloc(loc_n * sizeof(double));
+temp_masses_recv = malloc(loc_n * sizeof(double));
+
+
    if (my_rank == 0) vel = malloc(n*sizeof(vect_t));
    MPI_Type_contiguous(DIM, MPI_DOUBLE, &vect_mpi_t);
    MPI_Type_commit(&vect_mpi_t);
@@ -142,8 +152,11 @@ int main(int argc, char* argv[]) {
    else
       Gen_init_cond(masses, pos, loc_vel, n, loc_n);
 
-   memcpy(loc_pos, pos+my_rank*loc_n, sizeof loc_pos);
-   memcpy(loc_masses, masses+my_rank*loc_n, sizeof loc_masses);
+   memcpy(loc_pos, pos+my_rank*loc_n, loc_n * sizeof(vect_t));
+   memcpy(loc_masses, masses+my_rank*loc_n, loc_n * sizeof(double));
+
+   memcpy(temp, loc_pos, loc_n * sizeof(vect_t));
+   memcpy(temp_masses, loc_masses, loc_n * sizeof(double));
 
    start = MPI_Wtime();
 #  ifndef NO_OUTPUT
@@ -168,17 +181,17 @@ int main(int argc, char* argv[]) {
          if (my_rank == 0) {
             // printf("Core %d sending to core %d\n", my_rank, next);
             MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
-            MPI_Send(loc_masses, loc_n, vect_mpi_t, next, 0, comm);
+            MPI_Send(loc_masses, loc_n, MPI_DOUBLE, next, 0, comm);
             // printf("Core %d recieving from core %d\n", my_rank, previous);
             MPI_Recv(loc_pos, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
-            MPI_Recv(loc_masses, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(loc_masses, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
          } else {
             // printf("Core %d recieving from core %d\n", my_rank, previous);
             MPI_Recv(loc_pos, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
-            MPI_Recv(loc_masses, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(loc_masses, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
             // printf("Core %d sending to core %d\n", my_rank, next);
             MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
-            MPI_Send(loc_masses, loc_n, vect_mpi_t, next, 0, comm);
+            MPI_Send(loc_masses, loc_n, MPI_DOUBLE, next, 0, comm);
       }
       }
       // MPI_Allgather(MPI_IN_PLACE, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t, comm);
