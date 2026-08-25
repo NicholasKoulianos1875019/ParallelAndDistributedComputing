@@ -94,8 +94,9 @@ void Gen_init_cond(double masses[], vect_t pos[],
       vect_t loc_vel[], int n, int loc_n);
 void Output_state(double time, double masses[], vect_t pos[],
       vect_t loc_vel[], int n, int loc_n);
-void Compute_force(int loc_part, double masses[], vect_t loc_forces[], 
-      vect_t pos[], int n, int loc_n);
+void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[],
+   vect_t curr_pos[], double new_masses[], vect_t new_pos[], int new_rank, int loc_n);
+
 void Update_part(int loc_part, double masses[], vect_t loc_forces[], 
       vect_t loc_pos[], vect_t loc_vel[], int n, int loc_n, double delta_t);
 
@@ -115,11 +116,11 @@ int main(int argc, char* argv[]) {
    vect_t* pos;                /* Positions of all particles */
    vect_t* loc_vel;            /* Velocities of my particles */
    vect_t* loc_forces;        /* Forces on my particles     */
-   vect_t* temp;
-   vect_t* temp_recv;
+   vect_t* pos_send;
+   vect_t* pos_recv;
 
-   double* temp_masses;
-   double* temp_masses_recv;       
+   double* mass_send;
+   double* mass_recv;       
 
    char g_i;                   /*_G_en or _i_nput init conds */
    double start, finish;       /* For timings                */
@@ -137,11 +138,10 @@ int main(int argc, char* argv[]) {
    pos = malloc(n*sizeof(vect_t));
    loc_forces = malloc(loc_n*sizeof(vect_t));
    loc_vel = malloc(loc_n*sizeof(vect_t));
-temp = malloc(loc_n * sizeof(vect_t));
-temp_recv = malloc(loc_n * sizeof(vect_t));
-temp_masses = malloc(loc_n * sizeof(double));
-temp_masses_recv = malloc(loc_n * sizeof(double));
-
+   pos_send = malloc(loc_n * sizeof(vect_t));
+   pos_recv = malloc(loc_n * sizeof(vect_t));
+   mass_send = malloc(loc_n * sizeof(double));
+   mass_recv = malloc(loc_n * sizeof(double));
 
    if (my_rank == 0) vel = malloc(n*sizeof(vect_t));
    MPI_Type_contiguous(DIM, MPI_DOUBLE, &vect_mpi_t);
@@ -155,8 +155,8 @@ temp_masses_recv = malloc(loc_n * sizeof(double));
    memcpy(loc_pos, pos+my_rank*loc_n, loc_n * sizeof(vect_t));
    memcpy(loc_masses, masses+my_rank*loc_n, loc_n * sizeof(double));
 
-   memcpy(temp, loc_pos, loc_n * sizeof(vect_t));
-   memcpy(temp_masses, loc_masses, loc_n * sizeof(double));
+   memcpy(pos_send, loc_pos, loc_n * sizeof(vect_t));
+   memcpy(mass_send, loc_masses, loc_n * sizeof(double));
 
    start = MPI_Wtime();
 #  ifndef NO_OUTPUT
@@ -433,40 +433,31 @@ void Output_state(double time, double masses[], vect_t pos[],
  * Here, m_k is the mass of particle k and s_k is its position vector
  * (at time t). 
  */
-void Compute_force(int loc_part, double masses[], vect_t loc_forces[], 
-      vect_t pos[], int n, int loc_n) {
+void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[], 
+      vect_t curr_pos[], double new_masses[], vect_t new_pos[], int new_rank, int loc_n) {
    int k, part;
    double mg; 
    vect_t f_part_k;
    double len, len_3, fact;
 
    /* Global index corresponding to loc_part */
-   part = my_rank*loc_n + loc_part;
-   loc_forces[loc_part][X] = loc_forces[loc_part][Y] = 0.0;
-#  ifdef DEBUG
-   printf("Proc %d > Current total force on part %d = (%.3e, %.3e)\n",
-         my_rank, part, loc_forces[loc_part][X], 
-         loc_forces[loc_part][Y]);
-#  endif
-   for (k = 0; k < n; k++) {
-      if (k != part) {
+   part = my_rank*loc_n + curr_part;
+
+   for (k = 0; k < loc_n; k++) {
+      if ((new_rank*loc_n+k) != part) {
          /* Compute force on part due to k */
-         f_part_k[X] = pos[part][X] - pos[k][X];
-         f_part_k[Y] = pos[part][Y] - pos[k][Y];
+         f_part_k[X] = curr_pos[part][X] - new_pos[k][X];
+         f_part_k[Y] = curr_pos[part][Y] - new_pos[k][Y];
          len = sqrt(f_part_k[X]*f_part_k[X] + f_part_k[Y]*f_part_k[Y]);
          len_3 = len*len*len;
-         mg = -G*masses[part]*masses[k];
+         mg = -G*curr_masses[part]*new_masses[k];
          fact = mg/len_3;
          f_part_k[X] *= fact;
          f_part_k[Y] *= fact;
-#        ifdef DEBUG
-         printf("Proc %d > Force on part %d due to part %d = (%.3e, %.3e)\n",
-               my_rank, part, k, f_part_k[X], f_part_k[Y]);
-#        endif
    
          /* Add force in to total forces */
-         loc_forces[loc_part][X] += f_part_k[X];
-         loc_forces[loc_part][Y] += f_part_k[Y];
+         curr_forces[curr_part][X] += f_part_k[X];
+         curr_forces[curr_part][Y] += f_part_k[Y];
       }
    }
 }  /* Compute_force */
