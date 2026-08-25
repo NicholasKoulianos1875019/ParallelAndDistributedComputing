@@ -164,37 +164,48 @@ int main(int argc, char* argv[]) {
 #  endif
    for (step = 1; step <= n_steps; step++) {
       t = step*delta_t;
-      for (loc_part = 0; loc_part < loc_n; loc_part++)
-         Compute_force(loc_part, loc_masses, loc_forces, loc_pos, n, loc_n);
-      for (loc_part = 0; loc_part < loc_n; loc_part++)
-         Update_part(loc_part, loc_masses, loc_forces, loc_pos, loc_vel, 
-               n, loc_n, delta_t);
+      for (loc_part = 0; loc_part < loc_n; loc_part++) {
+         loc_forces[loc_part][X] = 0.0;
+         loc_forces[loc_part][X] = 0.0;
+      }
+
+memcpy(pos_send, loc_pos, loc_n * sizeof(vect_t));
+memcpy(mass_send, loc_masses, loc_n * sizeof(double));
+
+         Compute_force(loc_part, loc_masses, loc_forces, loc_pos, mass_send, pos_send, my_rank, loc_n);
 
     // Ring start
       int next = (my_rank + 1) % comm_sz;
       int previous = (my_rank - 1 + comm_sz) % comm_sz;
 
       for (int transfer_i = 0; transfer_i < comm_sz - 1; transfer_i++) {
-         int next_block = (my_rank - transfer_i + comm_sz) % comm_sz;
-         int previous_block = (my_rank - transfer_i - 1 + comm_sz) % comm_sz;
 
          if (my_rank == 0) {
             // printf("Core %d sending to core %d\n", my_rank, next);
-            MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
-            MPI_Send(loc_masses, loc_n, MPI_DOUBLE, next, 0, comm);
+            MPI_Send(pos_send, loc_n, vect_mpi_t, next, 0, comm);
+            MPI_Send(mass_send, loc_n, MPI_DOUBLE, next, 0, comm);
             // printf("Core %d recieving from core %d\n", my_rank, previous);
-            MPI_Recv(loc_pos, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
-            MPI_Recv(loc_masses, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(pos_recv, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(mass_recv, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
          } else {
             // printf("Core %d recieving from core %d\n", my_rank, previous);
-            MPI_Recv(loc_pos, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
-            MPI_Recv(loc_masses, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(pos_recv, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(mass_recv, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
             // printf("Core %d sending to core %d\n", my_rank, next);
-            MPI_Send(loc_pos, loc_n, vect_mpi_t, next, 0, comm);
-            MPI_Send(loc_masses, loc_n, MPI_DOUBLE, next, 0, comm);
+            MPI_Send(pos_send, loc_n, vect_mpi_t, next, 0, comm);
+            MPI_Send(mass_send, loc_n, MPI_DOUBLE, next, 0, comm);
       }
+      Compute_force(loc_part, loc_masses, loc_forces, loc_pos, mass_recv, pos_recv, previous, loc_n);
       }
-      // MPI_Allgather(MPI_IN_PLACE, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t, comm);
+
+   vect_t* temp_pos = pos_send;
+   pos_send = pos_recv;
+   pos_recv = temp_pos;
+
+   double* temp_mass = mass_send;
+   mass_send = mass_recv;
+   mass_recv = temp_mass;
+
       // Ring end
 #     ifndef NO_OUTPUT
       if (step % output_freq == 0)
@@ -202,15 +213,35 @@ int main(int argc, char* argv[]) {
 #     endif
    }
    
+   for (loc_part = 0; loc_part < loc_n; loc_part++) {
+
+   Update_part(loc_part, loc_masses, loc_forces, loc_pos, loc_vel, n, loc_n, delta_t);
+}
+
+#ifndef NO_OUTPUT
+if (step % output_freq == 0) {
+   MPI_Gather(loc_pos,loc_n,vect_mpi_t,pos,loc_n,vect_mpi_t,0,comm);
+   Output_state(t, masses, pos, loc_vel, n, loc_n);
+}
+#endif
+   
    finish = MPI_Wtime();
    if (my_rank == 0)
       printf("Elapsed time = %e seconds\n", finish-start);
 
    MPI_Type_free(&vect_mpi_t);
-   free(masses);
-   free(pos);
+   free(loc_pos);
+   free(loc_masses);
    free(loc_forces);
    free(loc_vel);
+
+   free(pos_send);
+   free(pos_recv);
+   free(mass_send);
+   free(mass_recv);
+
+   free(masses);
+   free(pos);
    if (my_rank == 0) free(vel);
 
    MPI_Finalize();
