@@ -435,8 +435,13 @@ void Output_state(double time, vect_t loc_pos[],
       vect_t loc_vel[], int n, int loc_n) {
    int part;
 
-   vect_t* pos = malloc(n * sizeof(vect_t));
-   vect_t* vel = malloc(n * sizeof(vect_t));
+   vect_t* pos = NULL; 
+   vect_t* vel = NULL; 
+
+   if (my_rank == 0) {
+      pos=malloc(n * sizeof(vect_t));
+      vel=malloc(n * sizeof(vect_t));
+   };
 
    MPI_Gather(loc_pos, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t, 
          0, comm);
@@ -535,15 +540,6 @@ void Update_part(int loc_part, double masses[], vect_t loc_forces[],
    double fact;
 
    fact = delta_t/masses[loc_part];
-#  ifdef DEBUG
-   printf("Proc %d > Before update of %d:\n", my_rank, part);
-   printf("   Position  = (%.3e, %.3e)\n", 
-         loc_pos[loc_part][X], loc_pos[loc_part][Y]);
-   printf("   Velocity  = (%.3e, %.3e)\n", 
-         loc_vel[loc_part][X], loc_vel[loc_part][Y]);
-   printf("   Net force = (%.3e, %.3e)\n", 
-         loc_forces[loc_part][X], loc_forces[loc_part][Y]);
-#  endif
    loc_pos[loc_part][X] += delta_t * loc_vel[loc_part][X];
    loc_pos[loc_part][Y] += delta_t * loc_vel[loc_part][Y];
    loc_vel[loc_part][X] += fact * loc_forces[loc_part][X];
