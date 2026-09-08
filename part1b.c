@@ -81,7 +81,7 @@ const double G = 6.673e-11;  /* Gravitational constant. */
 int my_rank, comm_sz;
 MPI_Comm comm;
 MPI_Datatype vect_mpi_t;
-
+// Function signatures updated to reflect local arrays rather than global
 void Usage(char* prog_name);
 void Get_args(int argc, char* argv[], int* n_p, int* n_steps_p, 
       double* delta_t_p, int* output_freq_p, char* g_i_p);
@@ -99,6 +99,7 @@ void Update_part(int loc_part, double masses[], vect_t loc_forces[],
 
 /*--------------------------------------------------------------------*/
 int main(int argc, char* argv[]) {
+   // From part1a, global variables removed and more local variables added for handling transfers
    int n;                      /* Total number of particles  */
    int loc_n;                  /* Number of my particles     */
    int n_steps;                /* Number of timesteps        */
@@ -131,6 +132,7 @@ int main(int argc, char* argv[]) {
    loc_pos = malloc(loc_n*sizeof(vect_t));
    loc_forces = malloc(loc_n*sizeof(vect_t));
    loc_vel = malloc(loc_n*sizeof(vect_t));
+   // Define local variables for handling transfer around the ring
    pos_send = malloc(loc_n * sizeof(vect_t));
    pos_recv = malloc(loc_n * sizeof(vect_t));
    mass_send = malloc(loc_n * sizeof(double));
@@ -148,25 +150,31 @@ int main(int argc, char* argv[]) {
 #  ifndef NO_OUTPUT
    Output_state(0.0, loc_pos, loc_vel, n, loc_n);
 #  endif
+
+// Define neighbours based on rank of process
+      int next = (my_rank + 1) % comm_sz;
+      int previous = (my_rank - 1 + comm_sz) % comm_sz;
+
    for (step = 1; step <= n_steps; step++) {
       t = step*delta_t;
+      // Initialization at 0 removed from compute force, as its now called several times per time step
       for (loc_part = 0; loc_part < loc_n; loc_part++) {
          loc_forces[loc_part][X] = 0.0;
          loc_forces[loc_part][Y] = 0.0;
       }
 
+// Establish initial ring package for first transfer
 memcpy(pos_send, loc_pos, loc_n * sizeof(vect_t));
 memcpy(mass_send, loc_masses, loc_n * sizeof(double));
 int recv_rank = my_rank;
 
+// Compute initial forces imposed by own particles
 for (loc_part = 0; loc_part < loc_n; loc_part++) {
    Compute_force(loc_part, loc_masses, loc_forces, loc_pos, mass_send, pos_send, recv_rank, loc_n);
 }
 
-    // Ring start
-      int next = (my_rank + 1) % comm_sz;
-      int previous = (my_rank - 1 + comm_sz) % comm_sz;
 
+    // Ring start
       for (int transfer_i = 0; transfer_i < comm_sz - 1; transfer_i++) {
 
          if (my_rank == 0) {
@@ -486,6 +494,8 @@ void Output_state(double time, vect_t loc_pos[],
  * Here, m_k is the mass of particle k and s_k is its position vector
  * (at time t). 
  */
+
+ // Variable names updated to reflect local variables from current and neighbour
 void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[], 
       vect_t curr_pos[], double new_masses[], vect_t new_pos[], int new_rank, int loc_n) {
    int k, part;
@@ -493,7 +503,7 @@ void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[],
    vect_t f_part_k;
    double len, len_3, fact;
 
-   /* Global index corresponding to loc_part */
+   // Global index corresponding to loc_part
    part = my_rank*loc_n + curr_part;
 
    for (k = 0; k < loc_n; k++) {
@@ -507,7 +517,10 @@ void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[],
          fact = mg/len_3;
          f_part_k[X] *= fact;
          f_part_k[Y] *= fact;
-   
+   #        ifdef DEBUG
+         printf("Proc %d > Force on part %d due to part %d = (%.3e, %.3e)\n",
+               my_rank, part, k, f_part_k[X], f_part_k[Y]);
+#        endif
          /* Add force in to total forces */
          curr_forces[curr_part][X] += f_part_k[X];
          curr_forces[curr_part][Y] += f_part_k[Y];
@@ -536,12 +549,27 @@ void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[],
  */
 void Update_part(int loc_part, double masses[], vect_t loc_forces[], 
       vect_t loc_pos[], vect_t loc_vel[], int n, int loc_n, 
-      double delta_t) {
+      double delta_t) {  
+// Removed part variable from part1a, as update_part is now called with 
+// only local particles assumed regardless. Debug methods updated to use loc_part
    double fact;
-
    fact = delta_t/masses[loc_part];
+   #  ifdef DEBUG
+   printf("Proc %d > Before update of %d:\n", my_rank, loc_part);
+   printf("   Position  = (%.3e, %.3e)\n", 
+         loc_pos[loc_part][X], loc_pos[loc_part][Y]);
+   printf("   Velocity  = (%.3e, %.3e)\n", 
+         loc_vel[loc_part][X], loc_vel[loc_part][Y]);
+   printf("   Net force = (%.3e, %.3e)\n", 
+         loc_forces[loc_part][X], loc_forces[loc_part][Y]);
+#  endif
    loc_pos[loc_part][X] += delta_t * loc_vel[loc_part][X];
    loc_pos[loc_part][Y] += delta_t * loc_vel[loc_part][Y];
    loc_vel[loc_part][X] += fact * loc_forces[loc_part][X];
    loc_vel[loc_part][Y] += fact * loc_forces[loc_part][Y];
+#  ifdef DEBUG
+   printf("Proc %d > Position of %d = (%.3e, %.3e), Velocity = (%.3e,%.3e)\n",
+         my_rank, loc_part, loc_pos[loc_part][X], loc_pos[loc_part][Y],
+               loc_vel[loc_part][X], loc_vel[loc_part][Y]);
+#  endif
 }  /* Update_part */

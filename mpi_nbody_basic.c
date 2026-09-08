@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
    Output_state(0.0, masses, pos, loc_vel, n, loc_n);
 #  endif
    for (step = 1; step <= n_steps; step++) {
-      t = step*delta_t;
+      t = step*delta_t;.
       for (loc_part = 0; loc_part < loc_n; loc_part++)
          Compute_force(loc_part, masses, loc_forces, pos, n, loc_n);
       for (loc_part = 0; loc_part < loc_n; loc_part++)
