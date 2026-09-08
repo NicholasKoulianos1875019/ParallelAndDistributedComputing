@@ -1,5 +1,5 @@
 /* File:     mpi_nbody_basic.c
- * Purpose:  Implement a 2-dimensional n-body solver that uses the 
+ * Purpose:  Implement a 2-dimensional n-body solver that uses the
  *           basic algorithm.  This version uses an in-place Allgather
  *
  * Compile:  mpicc -g -Wall -o mpi_nbody_basic mpi_nbody_basic.c -lm
@@ -7,7 +7,7 @@
  *           To get verbose output, define DEBUG
  *
  * Run:      mpiexec -n <number of processes> ./mpi_nbody_basic
- *              <number of particles> <number of timesteps>  <size of timestep> 
+ *              <number of particles> <number of timesteps>  <size of timestep>
  *              <output frequency> <g|i>
  *              'g': generate initial conditions using a random number
  *                   generator
@@ -17,10 +17,10 @@
  *           A stepsize of 0.01 seems to work well with automatically
  *           generated data.
  *
- * Input:    If 'g' is specified on the command line, none.  
- *           If 'i', mass, initial position and initial velocity of 
+ * Input:    If 'g' is specified on the command line, none.
+ *           If 'i', mass, initial position and initial velocity of
  *              each particle
- * Output:   If the output frequency is k, then position and velocity of 
+ * Output:   If the output frequency is k, then position and velocity of
  *              each particle at every kth timestep.  This value is
  *              ignored (but still necessary) if NO_OUTPUT is defined
  *
@@ -41,10 +41,10 @@
  *    -G m_i m_k (s_i - s_k)/|s_i - s_k|^3
  *
  * Here, m_j is the mass of particle j, s_j is its position vector
- * (at time t), and G is the gravitational constant (see below).  
+ * (at time t), and G is the gravitational constant (see below).
  *
- * Note that the force on particle k due to particle i is 
- * -(force on i due to k).  So we could approximately halve the number 
+ * Note that the force on particle k due to particle i is
+ * -(force on i due to k).  So we could approximately halve the number
  * of force computations.  This version of the program does not
  * exploit this.
  *
@@ -69,57 +69,57 @@
 #include <mpi.h>
 #include <string.h>
 
-#define DIM 2  /* Two-dimensional system */
-#define X 0    /* x-coordinate subscript */
-#define Y 1    /* y-coordinate subscript */
+#define DIM 2 /* Two-dimensional system */
+#define X 0   /* x-coordinate subscript */
+#define Y 1   /* y-coordinate subscript */
 
-typedef double vect_t[DIM];  /* Vector type for position, etc. */
+typedef double vect_t[DIM]; /* Vector type for position, etc. */
 
 /* Global variables.  Except or vel all are unchanged after being set */
-const double G = 6.673e-11;  /* Gravitational constant. */
-                             /* Units are m^3/(kg*s^2)  */
+const double G = 6.673e-11; /* Gravitational constant. */
+                            /* Units are m^3/(kg*s^2)  */
 int my_rank, comm_sz;
 MPI_Comm comm;
 MPI_Datatype vect_mpi_t;
 // Function signatures updated to reflect local arrays rather than global
-void Usage(char* prog_name);
-void Get_args(int argc, char* argv[], int* n_p, int* n_steps_p, 
-      double* delta_t_p, int* output_freq_p, char* g_i_p);
-void Get_init_cond(double loc_masses[], vect_t loc_pos[], 
-      vect_t loc_vel[], int n, int loc_n);
-void Gen_init_cond(double loc_masses[], vect_t loc_pos[], 
-      vect_t loc_vel[], int n, int loc_n);
+// In particular, compute force now takes a set of current positions and masses and previous positions and masses,
+// although the internal method arithmetic is largely the same
+void Usage(char *prog_name);
+void Get_args(int argc, char *argv[], int *n_p, int *n_steps_p,
+              double *delta_t_p, int *output_freq_p, char *g_i_p);
+void Get_init_cond(double loc_masses[], vect_t loc_pos[],
+                   vect_t loc_vel[], int n, int loc_n);
+void Gen_init_cond(double loc_masses[], vect_t loc_pos[],
+                   vect_t loc_vel[], int n, int loc_n);
 void Output_state(double time, vect_t loc_pos[], vect_t loc_vel[],
-      int n, int loc_n);
+                  int n, int loc_n);
 void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[],
-   vect_t curr_pos[], double new_masses[], vect_t new_pos[], int new_rank, int loc_n);
-
-void Update_part(int loc_part, double masses[], vect_t loc_forces[], 
-      vect_t loc_pos[], vect_t loc_vel[], int n, int loc_n, double delta_t);
+                   vect_t curr_pos[], double new_masses[], vect_t new_pos[], int new_rank, int loc_n);
+void Update_part(int loc_part, double masses[], vect_t loc_forces[],
+                 vect_t loc_pos[], vect_t loc_vel[], int n, int loc_n, double delta_t);
 
 /*--------------------------------------------------------------------*/
-int main(int argc, char* argv[]) {
-   // From part1a, global variables removed and more local variables added for handling transfers
-   int n;                      /* Total number of particles  */
-   int loc_n;                  /* Number of my particles     */
-   int n_steps;                /* Number of timesteps        */
-   int step;                   /* Current step               */
-   int loc_part;               /* Current local particle     */
-   int output_freq;            /* Frequency of output        */
-   double delta_t;             /* Size of timestep           */
-   double t;                   /* Current Time               */         /* All the masses             */
-   vect_t* loc_pos = NULL;
-   double* loc_masses;               /* Positions of my particles  */       /* Positions of all particles */
-   vect_t* loc_vel = NULL;            /* Velocities of my particles */
-   vect_t* loc_forces = NULL;        /* Forces on my particles     */
-   vect_t* pos_send = NULL;
-   vect_t* pos_recv = NULL;
+int main(int argc, char *argv[])
+{
+   int n;                                     /* Total number of particles  */
+   int loc_n;                                 /* Number of my particles     */
+   int n_steps;                               /* Number of timesteps        */
+   int step;                                  /* Current step               */
+   int loc_part;                              /* Current local particle     */
+   int output_freq;                           /* Frequency of output        */
+   double delta_t;                            /* Size of timestep           */
+   double t; /* Current Time               */ /* All the masses             */
+   vect_t *loc_pos = NULL;                    // position of my particles
+   double *loc_masses;                        // mass of my particles
+   vect_t *loc_vel = NULL;                    /* Velocities of my particles */
+   vect_t *loc_forces = NULL;                 /* Forces on my particles     */
+   vect_t *pos_send = NULL;                   // temporary variable for positions to be sent
+   vect_t *pos_recv = NULL;                   // temporary variable for positions just recieved
+   double *mass_send;                         // temporary variable for masses to be sent
+   double *mass_recv;                         // temporary variable for massses just recieved
 
-   double* mass_send;
-   double* mass_recv;       
-
-   char g_i;                   /*_G_en or _i_nput init conds */
-   double start, finish;       /* For timings                */
+   char g_i;             /*_G_en or _i_nput init conds */
+   double start, finish; /* For timings                */
 
    MPI_Init(&argc, &argv);
    comm = MPI_COMM_WORLD;
@@ -127,12 +127,13 @@ int main(int argc, char* argv[]) {
    MPI_Comm_rank(comm, &my_rank);
 
    Get_args(argc, argv, &n, &n_steps, &delta_t, &output_freq, &g_i);
-   loc_n = n/comm_sz;  /* n should be evenly divisible by comm_sz */
-   loc_masses = malloc(loc_n*sizeof(double));
-   loc_pos = malloc(loc_n*sizeof(vect_t));
-   loc_forces = malloc(loc_n*sizeof(vect_t));
-   loc_vel = malloc(loc_n*sizeof(vect_t));
-   // Define local variables for handling transfer around the ring
+   // All global arrays removed from core-wise memory declerations, reserved for only initializing methods on the master core
+   loc_n = n / comm_sz; /* n should be evenly divisible by comm_sz */
+   loc_masses = malloc(loc_n * sizeof(double));
+   loc_pos = malloc(loc_n * sizeof(vect_t));
+   loc_forces = malloc(loc_n * sizeof(vect_t));
+   loc_vel = malloc(loc_n * sizeof(vect_t));
+   // Define local variables for handling transfer around the ring of positions and mass
    pos_send = malloc(loc_n * sizeof(vect_t));
    pos_recv = malloc(loc_n * sizeof(vect_t));
    mass_send = malloc(loc_n * sizeof(double));
@@ -147,83 +148,114 @@ int main(int argc, char* argv[]) {
       Gen_init_cond(loc_masses, loc_pos, loc_vel, n, loc_n);
 
    start = MPI_Wtime();
-#  ifndef NO_OUTPUT
+#ifndef NO_OUTPUT
    Output_state(0.0, loc_pos, loc_vel, n, loc_n);
-#  endif
+#endif
 
-// Define neighbours based on rank of process
-      int next = (my_rank + 1) % comm_sz;
-      int previous = (my_rank - 1 + comm_sz) % comm_sz;
+   // Define neighbours of current process, utilizing rank
+   // Both variables utilize modulus (%) to ensure indexes wrap around from comm_sz back to 0
+   // Previous utilizes a comm_sz buffer to ensure the master core doesn't produce negative indexes
+   int next = (my_rank + 1) % comm_sz;
+   int previous = (my_rank - 1 + comm_sz) % comm_sz;
 
-   for (step = 1; step <= n_steps; step++) {
-      t = step*delta_t;
+   for (step = 1; step <= n_steps; step++)
+   {
+      t = step * delta_t;
       // Initialization at 0 removed from compute force, as its now called several times per time step
-      for (loc_part = 0; loc_part < loc_n; loc_part++) {
+      // Instead, initialise at zero per time step
+      for (loc_part = 0; loc_part < loc_n; loc_part++)
+      {
          loc_forces[loc_part][X] = 0.0;
          loc_forces[loc_part][Y] = 0.0;
       }
 
-// Establish initial ring package for first transfer
-memcpy(pos_send, loc_pos, loc_n * sizeof(vect_t));
-memcpy(mass_send, loc_masses, loc_n * sizeof(double));
-int recv_rank = my_rank;
+      // Establish initial ring package for first transfer using own local position and mass
+      memcpy(pos_send, loc_pos, loc_n * sizeof(vect_t));
+      memcpy(mass_send, loc_masses, loc_n * sizeof(double));
+      // Define the first array of influencing particles to be the core's own local particles
+      int previous_block = my_rank;
 
-// Compute initial forces imposed by own particles
-for (loc_part = 0; loc_part < loc_n; loc_part++) {
-   Compute_force(loc_part, loc_masses, loc_forces, loc_pos, mass_send, pos_send, recv_rank, loc_n);
-}
+      // Compute initial forces imposed by own particles
+      for (loc_part = 0; loc_part < loc_n; loc_part++)
+      {
+         Compute_force(loc_part, loc_masses, loc_forces, loc_pos, mass_send, pos_send, previous_block, loc_n);
+      }
 
-
-    // Ring start
-      for (int transfer_i = 0; transfer_i < comm_sz - 1; transfer_i++) {
-
-         if (my_rank == 0) {
+      // Ring start
+      // Upon first ring transfer, transfers repeat with each process
+      // Forwarding its last recieved transfer onto its succeeding neighbour
+      // This repeats until each process finally recieves the local positions
+      // Owned by its succeeding neighbour
+      for (int transfer_i = 0; transfer_i < comm_sz - 1; transfer_i++)
+      {
+         // If master process, send initially before recieving to begin the cycle
+         if (my_rank == 0)
+         {
             // printf("Core %d sending to core %d\n", my_rank, next);
+            // Send local mass and position to next neighbour
             MPI_Send(pos_send, loc_n, vect_mpi_t, next, 0, comm);
             MPI_Send(mass_send, loc_n, MPI_DOUBLE, next, 0, comm);
             // printf("Core %d recieving from core %d\n", my_rank, previous);
+            // Recieve local mass and position from prior neighbour
             MPI_Recv(pos_recv, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
             MPI_Recv(mass_recv, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
-         } else {
+         }
+         else
+         {
             // printf("Core %d recieving from core %d\n", my_rank, previous);
+            // Recieve local mass and position from prior neighbour
             MPI_Recv(pos_recv, loc_n, vect_mpi_t, previous, 0, comm, MPI_STATUS_IGNORE);
             MPI_Recv(mass_recv, loc_n, MPI_DOUBLE, previous, 0, comm, MPI_STATUS_IGNORE);
             // printf("Core %d sending to core %d\n", my_rank, next);
+            // Send local mass and position to next neighbour
             MPI_Send(pos_send, loc_n, vect_mpi_t, next, 0, comm);
             MPI_Send(mass_send, loc_n, MPI_DOUBLE, next, 0, comm);
+         }
+         // Define current package ownership based on number of ring transfers occured
+         // When transfer_i = 0, core will recieve preceeding neighbours
+         // When transfer_i = comm_sz - 2, core will recieve local positions of its succeeding neighbour from its preceeding neighbour
+         previous_block = (my_rank - 1 - transfer_i + comm_sz) % comm_sz;
+         // Add force contributions to local particles from recently recieved particle positions and mass
+         for (loc_part = 0; loc_part < loc_n; loc_part++)
+         {
+            Compute_force(loc_part, loc_masses, loc_forces, loc_pos, mass_recv, pos_recv, previous_block, loc_n);
+         }
+
+         // Define temporary variable for swapping positions
+         vect_t *temp_pos = pos_send;
+         // Swap recieved and sent packages. This ensures every unique array of local positions circulates fully
+         // by each core immediately sending the package it just recieved onward
+         pos_send = pos_recv;
+         pos_recv = temp_pos;
+
+         // Define temporary variables for swapping masses
+         double *temp_mass = mass_send;
+         // Swap recieved and sent packages. This ensures every unique array of local positions circulates fully
+         // by each core immediately sending the package it just recieved onward
+         mass_send = mass_recv;
+         mass_recv = temp_mass;
+
+         // Ring end
       }
-      recv_rank = (recv_rank - 1 + comm_sz) % comm_sz;
-      for (loc_part = 0; loc_part < loc_n; loc_part++) {
-      Compute_force(loc_part, loc_masses, loc_forces, loc_pos, mass_recv, pos_recv, recv_rank, loc_n);
+      // All transfers complete, update all particle velocities
+      for (loc_part = 0; loc_part < loc_n; loc_part++)
+      {
+         Update_part(loc_part, loc_masses, loc_forces, loc_pos, loc_vel, n, loc_n, delta_t);
       }
-
-   vect_t* temp_pos = pos_send;
-   pos_send = pos_recv;
-   pos_recv = temp_pos;
-
-   double* temp_mass = mass_send;
-   mass_send = mass_recv;
-   mass_recv = temp_mass;
-
-      // Ring end
-   }
-   
-   for (loc_part = 0; loc_part < loc_n; loc_part++) {
-   Update_part(loc_part, loc_masses, loc_forces, loc_pos, loc_vel, n, loc_n, delta_t);
-}
-
 
 #ifndef NO_OUTPUT
-if (step % output_freq == 0) {
-   Output_state(t, loc_pos, loc_vel, n, loc_n);
-}
+      if (step % output_freq == 0)
+      {
+         Output_state(t, loc_pos, loc_vel, n, loc_n);
+      }
 #endif
-}
+   }
    finish = MPI_Wtime();
    if (my_rank == 0)
-      printf("Elapsed time = %e seconds\n", finish-start);
+      printf("Elapsed time = %e seconds\n", finish - start);
 
    MPI_Type_free(&vect_mpi_t);
+   // Free all local arrays from the process
    free(loc_pos);
    free(loc_masses);
    free(loc_forces);
@@ -237,27 +269,26 @@ if (step % output_freq == 0) {
    MPI_Finalize();
 
    return 0;
-}  /* main */
-
+} /* main */
 
 /*---------------------------------------------------------------------
  * Function: Usage
  * Purpose:  Print instructions for command-line and exit
- * In arg:   
+ * In arg:
  *    prog_name:  the name of the program as typed on the command-line
  */
-void Usage(char* prog_name) {
-   
+void Usage(char *prog_name)
+{
+
    fprintf(stderr, "usage: mpiexec -n <number of processes> %s\n", prog_name);
    fprintf(stderr, "   <number of particles> <number of timesteps>\n");
    fprintf(stderr, "   <size of timestep> <output frequency>\n");
    fprintf(stderr, "   <g|i>\n");
    fprintf(stderr, "   'g': program should generate init conds\n");
    fprintf(stderr, "   'i': program should get init conds from stdin\n");
-    
-   exit(0);
-}  /* Usage */
 
+   exit(0);
+} /* Usage */
 
 /*---------------------------------------------------------------------
  * Function:  Get_args
@@ -275,10 +306,13 @@ void Usage(char* prog_name) {
  *                     should be generated by the program and 'i' if
  *                     they should be read from stdin
  */
-void Get_args(int argc, char* argv[], int* n_p, int* n_steps_p, 
-      double* delta_t_p, int* output_freq_p, char* g_i_p) {
-   if (my_rank == 0) {
-      if (argc != 6) Usage(argv[0]);
+void Get_args(int argc, char *argv[], int *n_p, int *n_steps_p,
+              double *delta_t_p, int *output_freq_p, char *g_i_p)
+{
+   if (my_rank == 0)
+   {
+      if (argc != 6)
+         Usage(argv[0]);
       *n_p = strtol(argv[1], NULL, 10);
       *n_steps_p = strtol(argv[2], NULL, 10);
       *delta_t_p = strtod(argv[3], NULL);
@@ -291,33 +325,37 @@ void Get_args(int argc, char* argv[], int* n_p, int* n_steps_p,
    MPI_Bcast(output_freq_p, 1, MPI_INT, 0, comm);
    MPI_Bcast(g_i_p, 1, MPI_CHAR, 0, comm);
 
-   if (*n_p <= 0 || *n_steps_p < 0 || *delta_t_p <= 0) {
-      if (my_rank == 0) Usage(argv[0]);
+   if (*n_p <= 0 || *n_steps_p < 0 || *delta_t_p <= 0)
+   {
+      if (my_rank == 0)
+         Usage(argv[0]);
       MPI_Finalize();
       exit(0);
    }
-   if (*g_i_p != 'g' && *g_i_p != 'i') {
-      if (my_rank == 0) Usage(argv[0]);
+   if (*g_i_p != 'g' && *g_i_p != 'i')
+   {
+      if (my_rank == 0)
+         Usage(argv[0]);
       MPI_Finalize();
       exit(0);
    }
-#  ifdef DEBUG
-   if (my_rank == 0) {
+#ifdef DEBUG
+   if (my_rank == 0)
+   {
       printf("n = %d\n", *n_p);
       printf("n_steps = %d\n", *n_steps_p);
       printf("delta_t = %e\n", *delta_t_p);
       printf("output_freq = %d\n", *output_freq_p);
       printf("g_i = %c\n", *g_i_p);
    }
-#  endif
-}  /* Get_args */
-
+#endif
+} /* Get_args */
 
 /*---------------------------------------------------------------------
  * Function:   Get_init_cond
  * Purpose:    Read in initial conditions:  mass, position and velocity
  *             for each particle
- * In args:  
+ * In args:
  *    n:       total number of particles
  *    loc_n:   number of particles assigned to this process
  * Out args:
@@ -328,24 +366,32 @@ void Get_args(int argc, char* argv[], int* n_p, int* n_steps_p,
  * Global var:
  *    vel:     Scratch.  Used by process 0 for global velocities
  */
-void Get_init_cond(double loc_masses[], vect_t loc_pos[], 
-     vect_t loc_vel[], int n, int loc_n) {
+
+// Updated from part1a, initial conditions now generates a global array once,
+// Scatters it to every process, and then frees the space. Global arrays are only ever stored on the master process, and only temporarily.
+void Get_init_cond(double loc_masses[], vect_t loc_pos[],
+                   vect_t loc_vel[], int n, int loc_n)
+{
    int part;
 
-   double* masses = NULL;
-   vect_t* pos = NULL;
-   vect_t* vel = NULL;
-   
-   if (my_rank == 0) {
+   // Define global arrays, keep empty in case this is not the master process
+   double *masses = NULL;
+   vect_t *pos = NULL;
+   vect_t *vel = NULL;
+   // If its the master process, create the global initial arrays
+   if (my_rank == 0)
+   {
 
       masses = malloc(n * sizeof(double));
       pos = malloc(n * sizeof(vect_t));
       vel = malloc(n * sizeof(vect_t));
 
       printf("For each particle, enter (in order):\n");
-      printf("   its mass, its x-coord, its y-coord, " "its x-velocity, its y-velocity\n");
+      printf("   its mass, its x-coord, its y-coord, "
+             "its x-velocity, its y-velocity\n");
 
-      for (part = 0; part < n; part++) {
+      for (part = 0; part < n; part++)
+      {
          scanf("%lf", &masses[part]);
          scanf("%lf", &pos[part][X]);
          scanf("%lf", &pos[part][Y]);
@@ -353,23 +399,26 @@ void Get_init_cond(double loc_masses[], vect_t loc_pos[],
          scanf("%lf", &vel[part][Y]);
       }
    }
+   // Scatter masses, positions and velocities into respective local allotments per process
    MPI_Scatter(masses, loc_n, MPI_DOUBLE, loc_masses, loc_n, MPI_DOUBLE, 0, comm);
    MPI_Scatter(pos, loc_n, vect_mpi_t, loc_pos, loc_n, vect_mpi_t, 0, comm);
    MPI_Scatter(vel, loc_n, vect_mpi_t, loc_vel, loc_n, vect_mpi_t, 0, comm);
 
-   if (my_rank == 0) {
+   // If the master core, free up global array
+   if (my_rank == 0)
+   {
       free(masses);
       free(pos);
       free(vel);
    }
 
-}  /* Get_init_cond */
+} /* Get_init_cond */
 
 /*---------------------------------------------------------------------
  * Function:  Gen_init_cond
  * Purpose:   Generate initial conditions:  mass, position and velocity
  *            for each particle
- * In args:  
+ * In args:
  *    n:       total number of particles
  *    loc_n:   number of particles assigned to this process
  * Out args:
@@ -380,35 +429,43 @@ void Get_init_cond(double loc_masses[], vect_t loc_pos[],
  *    vel:     Scratch.  Used by process 0 for global velocities
  *
  * Note:      The initial conditions place all particles at
- *            equal intervals on the nonnegative x-axis with 
+ *            equal intervals on the nonnegative x-axis with
  *            identical masses, and identical initial speeds
  *            parallel to the y-axis.  However, some of the
  *            velocities are in the positive y-direction and
  *            some are negative.
  */
-void Gen_init_cond(double loc_masses[], vect_t loc_pos[], 
-      vect_t loc_vel[], int n, int loc_n) {
+
+// Updated from part1a, initial conditions now generates a global array once,
+// Scatters it to every process, and then frees the space. Global arrays are only ever stored on the master process, and only temporarily.
+void Gen_init_cond(double loc_masses[], vect_t loc_pos[],
+                   vect_t loc_vel[], int n, int loc_n)
+{
    int part;
    double mass = 5.0e24;
    double gap = 1.0e5;
    double speed = 3.0e4;
 
-   double* masses = NULL;
-   vect_t* pos = NULL;
-   vect_t* vel = NULL;
+   // Define global arrays, keep empty in case this is not the master process
+   double *masses = NULL;
+   vect_t *pos = NULL;
+   vect_t *vel = NULL;
 
-   if (my_rank == 0) {
+   // If its the master process, create the global initial array
+   if (my_rank == 0)
+   {
 
       masses = malloc(n * sizeof(double));
       pos = malloc(n * sizeof(vect_t));
       vel = malloc(n * sizeof(vect_t));
-//    srandom(1);
-      for (part = 0; part < n; part++) {
+      //    srandom(1);
+      for (part = 0; part < n; part++)
+      {
          masses[part] = mass;
-         pos[part][X] = part*gap;
+         pos[part][X] = part * gap;
          pos[part][Y] = 0.0;
          vel[part][X] = 0.0;
-//       if (random()/((double) RAND_MAX) >= 0.5)
+         //       if (random()/((double) RAND_MAX) >= 0.5)
          if (part % 2 == 0)
             vel[part][Y] = speed;
          else
@@ -416,17 +473,19 @@ void Gen_init_cond(double loc_masses[], vect_t loc_pos[],
       }
    }
 
+   // Scatter masses, positions and velocities into respective local allotments per process
    MPI_Scatter(masses, loc_n, MPI_DOUBLE, loc_masses, loc_n, MPI_DOUBLE, 0, comm);
    MPI_Scatter(pos, loc_n, vect_mpi_t, loc_pos, loc_n, vect_mpi_t, 0, comm);
    MPI_Scatter(vel, loc_n, vect_mpi_t, loc_vel, loc_n, vect_mpi_t, 0, comm);
 
-   if (my_rank == 0) {
+   // If the master core, free up global array
+   if (my_rank == 0)
+   {
       free(masses);
       free(pos);
       free(vel);
    }
-}  /* Gen_init_cond */
-
+} /* Gen_init_cond */
 
 /*---------------------------------------------------------------------
  * Function:   Output_state
@@ -439,26 +498,37 @@ void Gen_init_cond(double loc_masses[], vect_t loc_pos[],
  *    n:       total number of particles
  *    loc_n:   number of my particles
  */
+
+// Arithmetic is mostly the same from part1a, except now there is no global position or velocity array on any core
+// Similar to the initial_conds method, global arrays are instead created only for the lifespan of the method
+// Local velocities and positions are concatenated from every process at once, output to the user, and then immediately freed.
 void Output_state(double time, vect_t loc_pos[],
-      vect_t loc_vel[], int n, int loc_n) {
+                  vect_t loc_vel[], int n, int loc_n)
+{
    int part;
 
-   vect_t* pos = NULL; 
-   vect_t* vel = NULL; 
+   // Define global arrays, keep empty in case this is called by a non-master process
+   vect_t *pos = NULL;
+   vect_t *vel = NULL;
 
-   if (my_rank == 0) {
-      pos=malloc(n * sizeof(vect_t));
-      vel=malloc(n * sizeof(vect_t));
+   // If master process, allocate memory to global arrays
+   if (my_rank == 0)
+   {
+      pos = malloc(n * sizeof(vect_t));
+      vel = malloc(n * sizeof(vect_t));
    };
 
-   MPI_Gather(loc_pos, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t, 
-         0, comm);
-   MPI_Gather(loc_vel, loc_n, vect_mpi_t, vel, loc_n, vect_mpi_t, 
-         0, comm);
-   if (my_rank == 0) {
+   // Gather all local velocities and positions into a global array
+   MPI_Gather(loc_pos, loc_n, vect_mpi_t, pos, loc_n, vect_mpi_t,
+              0, comm);
+   MPI_Gather(loc_vel, loc_n, vect_mpi_t, vel, loc_n, vect_mpi_t,
+              0, comm);
+   if (my_rank == 0)
+   {
       printf("%.2f\n", time);
-      for (part = 0; part < n; part++) {
-//       printf("%.3f ", masses[part]);
+      for (part = 0; part < n; part++)
+      {
+         //       printf("%.3f ", masses[part]);
          printf("%3d %10.3e ", part, pos[part][X]);
          printf("  %10.3e ", pos[part][Y]);
          printf("  %10.3e ", vel[part][X]);
@@ -468,16 +538,15 @@ void Output_state(double time, vect_t loc_pos[],
       free(pos);
       free(vel);
    }
-}  /* Output_state */
-
+} /* Output_state */
 
 /*---------------------------------------------------------------------
  * Function:       Compute_force
- * Purpose:        Compute the total force on particle loc_part.  Don't 
- *                 exploit the symmetry (force on particle i due to 
- *                 particle k) = -(force on particle k due to particle i) 
- * In args:   
- *    loc_part:    the particle (local index) on which we're computing 
+ * Purpose:        Compute the total force on particle loc_part.  Don't
+ *                 exploit the symmetry (force on particle i due to
+ *                 particle k) = -(force on particle k due to particle i)
+ * In args:
+ *    loc_part:    the particle (local index) on which we're computing
  *                 the total force
  *    masses:      global array of particle masses
  *    pos:         global array of particle positions
@@ -486,48 +555,58 @@ void Output_state(double time, vect_t loc_pos[],
  * Out arg:
  *    loc_forces:  array of total forces acting on my particles
  *
- * Note: This function uses the force due to gravitation.  So 
+ * Note: This function uses the force due to gravitation.  So
  * the force on particle i due to particle k is given by
  *
  *    m_i m_k (s_k - s_i)/|s_k - s_i|^2
  *
  * Here, m_k is the mass of particle k and s_k is its position vector
- * (at time t). 
+ * (at time t).
  */
 
- // Variable names updated to reflect local variables from current and neighbour
-void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[], 
-      vect_t curr_pos[], double new_masses[], vect_t new_pos[], int new_rank, int loc_n) {
+// Variable names updated to reflect local variables from current and neighbour
+// Initialising at zero removed as to only occur once per timestep, now compute force is called
+// multiple times per timestep.
+// Arithmetic is the same from part1a, with tweaks to compute force from a "new" position and mass
+// array as opposed to global arrays. Indexing has been truncated from n to loc_n to reflect this.
+void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[],
+                   vect_t curr_pos[], double new_masses[], vect_t new_pos[], int new_rank, int loc_n)
+{
    int k, part;
-   double mg; 
+   double mg;
    vect_t f_part_k;
    double len, len_3, fact;
 
    // Global index corresponding to loc_part
-   part = my_rank*loc_n + curr_part;
-
-   for (k = 0; k < loc_n; k++) {
-      if ((new_rank*loc_n+k) != part) {
+   part = my_rank * loc_n + curr_part;
+#ifdef DEBUG
+   printf("Proc %d > Current total force on part %d = (%.3e, %.3e)\n",
+          my_rank, part, loc_forces[loc_part][X],
+          loc_forces[loc_part][Y]);
+#endif
+   for (k = 0; k < loc_n; k++)
+   {
+      if ((new_rank * loc_n + k) != part)
+      {
          /* Compute force on part due to k */
          f_part_k[X] = curr_pos[curr_part][X] - new_pos[k][X];
          f_part_k[Y] = curr_pos[curr_part][Y] - new_pos[k][Y];
-         len = sqrt(f_part_k[X]*f_part_k[X] + f_part_k[Y]*f_part_k[Y]);
-         len_3 = len*len*len;
+         len = sqrt(f_part_k[X] * f_part_k[X] + f_part_k[Y] * f_part_k[Y]);
+         len_3 = len * len * len;
          mg = -G * curr_masses[curr_part] * new_masses[k];
-         fact = mg/len_3;
+         fact = mg / len_3;
          f_part_k[X] *= fact;
          f_part_k[Y] *= fact;
-   #        ifdef DEBUG
+#ifdef DEBUG
          printf("Proc %d > Force on part %d due to part %d = (%.3e, %.3e)\n",
-               my_rank, part, k, f_part_k[X], f_part_k[Y]);
-#        endif
+                my_rank, part, k, f_part_k[X], f_part_k[Y]);
+#endif
          /* Add force in to total forces */
          curr_forces[curr_part][X] += f_part_k[X];
          curr_forces[curr_part][Y] += f_part_k[Y];
       }
    }
-}  /* Compute_force */
-
+} /* Compute_force */
 
 /*---------------------------------------------------------------------
  * Function:  Update_part
@@ -547,29 +626,31 @@ void Compute_force(int curr_part, double curr_masses[], vect_t curr_forces[],
  * Note:  This version uses Euler's method to update both the velocity
  *    and the position.
  */
-void Update_part(int loc_part, double masses[], vect_t loc_forces[], 
-      vect_t loc_pos[], vect_t loc_vel[], int n, int loc_n, 
-      double delta_t) {  
-// Removed part variable from part1a, as update_part is now called with 
+// Removed part variable from part1a, as update_part is now called with
 // only local particles assumed regardless. Debug methods updated to use loc_part
+// Otherwise, identical
+void Update_part(int loc_part, double masses[], vect_t loc_forces[],
+                 vect_t loc_pos[], vect_t loc_vel[], int n, int loc_n,
+                 double delta_t)
+{
    double fact;
-   fact = delta_t/masses[loc_part];
-   #  ifdef DEBUG
+   fact = delta_t / masses[loc_part];
+#ifdef DEBUG
    printf("Proc %d > Before update of %d:\n", my_rank, loc_part);
-   printf("   Position  = (%.3e, %.3e)\n", 
-         loc_pos[loc_part][X], loc_pos[loc_part][Y]);
-   printf("   Velocity  = (%.3e, %.3e)\n", 
-         loc_vel[loc_part][X], loc_vel[loc_part][Y]);
-   printf("   Net force = (%.3e, %.3e)\n", 
-         loc_forces[loc_part][X], loc_forces[loc_part][Y]);
-#  endif
+   printf("   Position  = (%.3e, %.3e)\n",
+          loc_pos[loc_part][X], loc_pos[loc_part][Y]);
+   printf("   Velocity  = (%.3e, %.3e)\n",
+          loc_vel[loc_part][X], loc_vel[loc_part][Y]);
+   printf("   Net force = (%.3e, %.3e)\n",
+          loc_forces[loc_part][X], loc_forces[loc_part][Y]);
+#endif
    loc_pos[loc_part][X] += delta_t * loc_vel[loc_part][X];
    loc_pos[loc_part][Y] += delta_t * loc_vel[loc_part][Y];
    loc_vel[loc_part][X] += fact * loc_forces[loc_part][X];
    loc_vel[loc_part][Y] += fact * loc_forces[loc_part][Y];
-#  ifdef DEBUG
+#ifdef DEBUG
    printf("Proc %d > Position of %d = (%.3e, %.3e), Velocity = (%.3e,%.3e)\n",
-         my_rank, loc_part, loc_pos[loc_part][X], loc_pos[loc_part][Y],
-               loc_vel[loc_part][X], loc_vel[loc_part][Y]);
-#  endif
-}  /* Update_part */
+          my_rank, loc_part, loc_pos[loc_part][X], loc_pos[loc_part][Y],
+          loc_vel[loc_part][X], loc_vel[loc_part][Y]);
+#endif
+} /* Update_part */
