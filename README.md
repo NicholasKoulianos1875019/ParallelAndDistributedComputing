@@ -15,7 +15,7 @@ In each program, the n-body solver will typically use the parameters provided du
            Output new positions and velocities
         }
  
-* NON-MPI METHODS *
+=========== NON-MPI METHODS ===========
 
 * nbody_basic.c *
 This program requires the additional file of timer.h to compile and run properly.
@@ -29,7 +29,7 @@ gcc -g -Wall -DCOMPUTE_ENERGY -o nbody_basic nbody_basic.c -lm
 
 Running: ./nbody_basic <number of particles> <number of timesteps> <size of timestep> <output frequency> <g|i>
 
-* MPI-BASED METHODS *
+=========== MPI METHODS ===========
 
 For all methods except nbody_basic.c, an additional parameter is used of <number of processes>. This resembles a number of cpu cores to portion the workload of the nbody problem across. The core nbody code will be simultaneously run on all cores, for a portion of the problem equal to <number of particles>/<number of processes>. For all methods with a <number of processes> parameter, <number of particles> but be evenly divisible by it. Otherwise, the code may produce incorrect final results.
 
@@ -80,3 +80,21 @@ mpicc -g -Wall -DDEBUG -o part1b part1b.c -lm
 
 RUNNING:
 mpiexec -n <number of processes> ./part1b <number of particles> <number of timesteps>  <size of timestep> <output frequency> <g|i>
+
+=========== TESTING METHODS ===========
+Alternate versions exist for each mpi-based program that feature specific input recieving and output writing from and to text files respectively. These are identifiable by their original program appended with "_test.c". These versions, rather than taking user input, read initial conditions directly from a "test_input_#.txt", perform their arithemtic, and then rather than outputting to terminal, output to a textfile identifiable by "method_output_#". For each of the three initial conditions, each MPI method is tested with the same 3 different sets of run parameters. These specific run parameters, and the order they were called in that correlate to the order of outputs in each output file, can be seen below.
+
+Output_1:
+mpiexec -n 1 ./<TestFilename> 4 10 0.01 10 i  
+mpiexec -n 2 ./<TestFilename> 4 10 0.1 10 i  
+mpiexec -n 4 ./<TestFilename> 4 5 0.01 5 i  
+
+Output_2:
+mpiexec -n 2 ./<TestFilename> 96 10 0.01 10 i  
+mpiexec -n 4 ./<TestFilename> 96 20 0.1 20 i  
+mpiexec -n 8 ./<TestFilename> 96 10 0.01 10 i  
+
+Output_3:
+mpiexec -n 1 ./<TestFilename> 20 10 0.01 10 i  
+mpiexec -n 4 ./<TestFilename> 20 20 0.1 20 i  
+mpiexec -n 5 ./<TestFilename> 20 10 0.01 10 i  

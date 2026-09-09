@@ -69,6 +69,9 @@
 #include <mpi.h>
 #include <string.h>
 
+#define INPUT_FILE "test_input_3.txt"
+#define OUTPUT_FILE "part1b_output_3.txt"
+
 #define DIM 2 /* Two-dimensional system */
 #define X 0   /* x-coordinate subscript */
 #define Y 1   /* y-coordinate subscript */
@@ -250,8 +253,15 @@ int main(int argc, char *argv[])
 #endif
    }
    finish = MPI_Wtime();
-   if (my_rank == 0)
-      printf("Elapsed time = %e seconds\n", finish - start);
+
+if (my_rank == 0)
+{
+   FILE *file = fopen(OUTPUT_FILE, "a");
+
+   fprintf(file, "Elapsed time = %e seconds\n", finish - start);
+
+   fclose(file);
+}
 
    MPI_Type_free(&vect_mpi_t);
    // Free all local arrays from the process
@@ -385,18 +395,20 @@ void Get_init_cond(double loc_masses[], vect_t loc_pos[],
       pos = malloc(n * sizeof(vect_t));
       vel = malloc(n * sizeof(vect_t));
 
-      printf("For each particle, enter (in order):\n");
-      printf("   its mass, its x-coord, its y-coord, "
-             "its x-velocity, its y-velocity\n");
+FILE *file = fopen(INPUT_FILE, "r");
 
-      for (part = 0; part < n; part++)
-      {
-         scanf("%lf", &masses[part]);
-         scanf("%lf", &pos[part][X]);
-         scanf("%lf", &pos[part][Y]);
-         scanf("%lf", &vel[part][X]);
-         scanf("%lf", &vel[part][Y]);
-      }
+for (part = 0; part < n; part++)
+{
+   fscanf(file, "%lf %lf %lf %lf %lf",
+          &masses[part],
+          &pos[part][X],
+          &pos[part][Y],
+          &vel[part][X],
+          &vel[part][Y]);
+}
+
+fclose(file);
+
    }
    // Scatter masses, positions and velocities into respective local allotments per process
    MPI_Scatter(masses, loc_n, MPI_DOUBLE, loc_masses, loc_n, MPI_DOUBLE, 0, comm);
@@ -524,16 +536,24 @@ void Output_state(double time, vect_t loc_pos[],
               0, comm);
    if (my_rank == 0)
    {
-      printf("%.2f\n", time);
-      for (part = 0; part < n; part++)
-      {
-         //       printf("%.3f ", masses[part]);
-         printf("%3d %10.3e ", part, pos[part][X]);
-         printf("  %10.3e ", pos[part][Y]);
-         printf("  %10.3e ", vel[part][X]);
-         printf("  %10.3e\n", vel[part][Y]);
-      }
-      printf("\n");
+FILE *file = fopen(OUTPUT_FILE, "a");
+
+fprintf(file, "%.2f\n", time);
+
+for (part = 0; part < n; part++)
+{
+   fprintf(file, "%3d %10.3e %10.3e %10.3e %10.3e\n",
+           part,
+           pos[part][X],
+           pos[part][Y],
+           vel[part][X],
+           vel[part][Y]);
+}
+
+fprintf(file, "\n");
+
+fclose(file);
+
       free(pos);
       free(vel);
    }
