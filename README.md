@@ -1,3 +1,5 @@
+https://github.com/NicholasKoulianos1875019/ParallelAndDistributedComputing.git
+
 This suite of programs for calculating solutions to the n-body problem relies on the <mpi.h> library. If after following the below compilation instructions, the MPI library header or methods flag errors for missing packages, you may need to install additional development packages or need to direct your compiler to where its stored.
 
 In each program, the n-body solver will typically use the parameters provided during the run script in the following simplified process:
